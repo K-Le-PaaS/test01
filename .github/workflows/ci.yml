@@ -1,11 +1,51 @@
-name: updated CI
+name: Service CI/CD (buildpacks-template)
+
 on:
- push:
- branches: ["main"]
+  push:
+    branches: [ "{s.github_branch_main or 'main'}" ]
+    paths: [ "**" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
- build:
- runs-on: ubuntu-latest
- steps:
- - uses: actions/checkout@v4
- - name: Echo
- run: echo Hello from custom workflow
+  buildpack-build:
+    runs-on: ubuntu-latest
+    env:
+      SERVICE_NAME: your-service-name
+      BUILD_PATH: .
+      IMAGE_REPO: docker.io/${{{{ secrets.DOCKER_ID }}}}/${{{{{ env.SERVICE_NAME }}}}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{{{ secrets.DOCKER_ID }}}}
+          password: ${{{{ secrets.DOCKER_PASSWD }}}}
+
+      - name: Compute tag
+        id: vars
+        run: |
+          SHORT_SHA=${{{{ github.sha }}}:0:7}
+          echo "tag=${{{{ SHORT_SHA }}}}" >> "$GITHUB_OUTPUT"
+
+      - name: Build with pack (Paketo builder)
+        uses: buildpacks/github-actions/pack@v5.8.1
+        with:
+          args: >
+            build ${{{{ env.IMAGE_REPO }}}}:${{{{{ steps.vars.outputs.tag }}}}}
+            --builder paketobuildpacks/builder-jammy-base
+            --path ${{{{ env.BUILD_PATH }}}}
+            --publish
+
+      - name: Tag latest
+        run: |
+          docker pull ${{{{ env.IMAGE_REPO }}}}:${{{{{ steps.vars.outputs.tag }}}}}
+          docker tag  ${{{{ env.IMAGE_REPO }}}}:${{{{{ steps.vars.outputs.tag }}}}} ${{{{ env.IMAGE_REPO }}}}:latest
+          docker push ${{{{ env.IMAGE_REPO }}}}:latest
+
+      # Note: deployment-config 업데이트는 백엔드 웹훅이 처리합니다
