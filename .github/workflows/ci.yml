@@ -13,7 +13,6 @@ jobs:
   buildpack-build:
     runs-on: ubuntu-latest
     env:
-      # 기본값: 현재 리포 이름을 서비스명으로 사용
       BUILD_PATH: .  # 모노레포면 하위 경로 지정 (예: ./apps/frontend)
     steps:
       - name: Checkout
@@ -29,10 +28,13 @@ jobs:
           username: ${{ secrets.DOCKER_ID }}
           password: ${{ secrets.DOCKER_PASSWD }}
 
+      # 서비스명/네임스페이스/이미지 경로를 먼저 셸 변수로 만든 뒤 GITHUB_ENV에 저장
       - name: Set SERVICE_NAME / NAMESPACE / IMAGE_REPO
         run: |
-          echo "SERVICE_NAME=${GITHUB_REPOSITORY##*/}" >> "$GITHUB_ENV"
-          echo "NAMESPACE=${{ secrets.DOCKER_NAMESPACE || secrets.DOCKER_ID }}" >> "$GITHUB_ENV"
+          SERVICE_NAME="${GITHUB_REPOSITORY##*/}"
+          NAMESPACE="${{ secrets.DOCKER_NAMESPACE || secrets.DOCKER_ID }}"
+          echo "SERVICE_NAME=${SERVICE_NAME}" >> "$GITHUB_ENV"
+          echo "NAMESPACE=${NAMESPACE}" >> "$GITHUB_ENV"
           echo "IMAGE_REPO=docker.io/${NAMESPACE}/${SERVICE_NAME}" >> "$GITHUB_ENV"
 
       - name: Ensure jq is installed
@@ -40,6 +42,7 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y jq
 
+      # Docker Hub 리포지토리 자동 생성 (PAT 권장)
       - name: Ensure Docker Hub repository exists
         env:
           NAMESPACE: ${{ env.NAMESPACE }}
@@ -49,33 +52,49 @@ jobs:
         run: |
           set -e
           base="https://hub.docker.com/v2"
+
+          # 로그인(JWT 토큰 발급)
+          TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
+            -d "{\"username\":\"$DH_USER\",\"password\":\"$DH_PASS\"}" \
+            "$base/users/login" | jq -r '.token')
+
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "Failed to obtain Docker Hub token"; exit 1
+          fi
+
           # 1) 존재 확인
-          status=$(curl -s -o /dev/null -w "%{http_code}" -u "$DH_USER:$DH_PASS" \
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: JWT $TOKEN" \
             "$base/repositories/$NAMESPACE/$REPO/")
+
           if [ "$status" = "200" ]; then
             echo "Repository exists: $NAMESPACE/$REPO"
             exit 0
           fi
           if [ "$status" != "404" ]; then
-            echo "Unexpected status on HEAD: $status"; exit 1
+            echo "Unexpected status: $status"; exit 1
           fi
+
           # 2) 생성: 개인/조직 분기
           if [ "$NAMESPACE" = "$DH_USER" ]; then
-            # 개인 네임스페이스
-            payload=$(jq -n --arg name "$REPO" --argjson private false '{name:$name, is_private:$private}')
             create_url="$base/repositories/"
-          else
-            # 조직 네임스페이스
             payload=$(jq -n --arg name "$REPO" --argjson private false '{name:$name, is_private:$private}')
+          else
             create_url="$base/repositories/$NAMESPACE/"
+            payload=$(jq -n --arg name "$REPO" --argjson private false '{name:$name, is_private:$private}')
           fi
-          create_status=$(curl -s -o /tmp/dh_create_resp.json -w "%{http_code}" -u "$DH_USER:$DH_PASS" \
-            -H "Content-Type: application/json" -d "$payload" "$create_url")
+
+          create_status=$(curl -s -o /tmp/dh_create_resp.json -w "%{http_code}" \
+            -H "Authorization: JWT $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$payload" "$create_url")
+
           if [ "$create_status" != "201" ] && [ "$create_status" != "200" ]; then
             echo "Create failed: HTTP $create_status"
             cat /tmp/dh_create_resp.json || true
             exit 1
           fi
+
           echo "Created repository: $NAMESPACE/$REPO"
 
       - name: Compute tag
