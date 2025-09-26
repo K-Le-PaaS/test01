@@ -2,33 +2,6 @@ name: Service CI/CD (buildpacks)
 
 on:
   push:
-    branches: [ "main" ]  # 필요시 main 변경
-    paths: [ "**" ]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  buildpack-build:
-    runs-on: ubuntu-latest
-    env:
-      SERVICE_NAME: test01
-      BUILD_PATH: .
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKER_ID }}
-          password: ${{ secrets.DOCKER_PASSWD }}
-name: Service CI/CD (buildpacks)
-
-on:
-  push:
     branches: [ "main" ]  # 필요시 변경
     paths: [ "**" ]
   workflow_dispatch:
@@ -40,8 +13,8 @@ jobs:
   buildpack-build:
     runs-on: ubuntu-latest
     env:
-      SERVICE_NAME: test01           # ← 실제 서비스명
-      BUILD_PATH: .                  # 모노레포면 하위 경로로 변경
+      SERVICE_NAME: your-service-name   # ← 실제 서비스명 (예: backend-hybrid, frontend)
+      BUILD_PATH: .                     # 모노레포면 하위 경로 지정 (예: ./apps/frontend)
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,26 +75,3 @@ jobs:
             --path "${{ env.BUILD_PATH }}" \
             --publish \
             --tag "${{ env.IMAGE_REPO }}:latest"
-      - name: Set IMAGE_REPO
-        run: echo "IMAGE_REPO=docker.io/${{ secrets.DOCKER_ID }}/${SERVICE_NAME}" >> "$GITHUB_ENV"
-
-      - name: Compute tag
-        id: vars
-        run: |
-          SHORT_SHA=${GITHUB_SHA::7}
-          echo "tag=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Build with pack (Paketo builder)
-        uses: buildpacks/github-actions/setup-pack@v5.8.1
-        with:
-          args: >
-            build ${{ env.IMAGE_REPO }}:${{ steps.vars.outputs.tag }}
-            --builder paketobuildpacks/builder-jammy-base
-            --path ${{ env.BUILD_PATH }}
-            --publish
-
-      - name: Tag latest
-        run: |
-          docker pull ${{ env.IMAGE_REPO }}:${{ steps.vars.outputs.tag }}
-          docker tag  ${{ env.IMAGE_REPO }}:${{ steps.vars.outputs.tag }} ${{ env.IMAGE_REPO }}:latest
-          docker push ${{ env.IMAGE_REPO }}:latest
