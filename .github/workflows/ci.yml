@@ -13,9 +13,8 @@ jobs:
   buildpack-build:
     runs-on: ubuntu-latest
     env:
-      SERVICE_NAME: test01   # ← 실제 서비스명으로 변경
-      BUILD_PATH: .                     # 모노레포면 하위 경로로 변경
-      IMAGE_REPO: docker.io/${{ secrets.DOCKER_ID }}/${{ env.SERVICE_NAME }}
+      SERVICE_NAME: test01
+      BUILD_PATH: .
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,6 +25,9 @@ jobs:
           registry: docker.io
           username: ${{ secrets.DOCKER_ID }}
           password: ${{ secrets.DOCKER_PASSWD }}
+
+      - name: Set IMAGE_REPO
+        run: echo "IMAGE_REPO=docker.io/${{ secrets.DOCKER_ID }}/${SERVICE_NAME}" >> "$GITHUB_ENV"
 
       - name: Compute tag
         id: vars
