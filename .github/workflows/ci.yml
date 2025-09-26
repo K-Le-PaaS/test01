@@ -13,7 +13,7 @@ jobs:
   buildpack-build:
     runs-on: ubuntu-latest
     env:
-      SERVICE_NAME: your-service-name   # ← 실제 서비스명 (예: backend-hybrid, frontend)
+      SERVICE_NAME: test01   # ← 실제 서비스명 (예: backend-hybrid, frontend)
       BUILD_PATH: .                     # 모노레포면 하위 경로 지정 (예: ./apps/frontend)
     steps:
       - name: Checkout
