@@ -42,7 +42,7 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y jq
 
-      # Docker Hub 리포지토리 자동 생성 (PAT 권장)
+      # Docker Hub 리포지토리 자동 생성 (권장: DOCKERHUB_PAT 보유)
       - name: Ensure Docker Hub repository exists
         env:
           NAMESPACE: ${{ env.NAMESPACE }}
@@ -75,14 +75,10 @@ jobs:
             echo "Unexpected status: $status"; exit 1
           fi
 
-          # 2) 생성: 개인/조직 분기
-          if [ "$NAMESPACE" = "$DH_USER" ]; then
-            create_url="$base/repositories/"
-            payload=$(jq -n --arg name "$REPO" --argjson private false '{name:$name, is_private:$private}')
-          else
-            create_url="$base/repositories/$NAMESPACE/"
-            payload=$(jq -n --arg name "$REPO" --argjson private false '{name:$name, is_private:$private}')
-          fi
+          # 2) 생성: 항상 /v2/repositories/ 로 전송, payload에 namespace 포함
+          create_url="$base/repositories/"
+          payload=$(jq -n --arg ns "$NAMESPACE" --arg name "$REPO" --argjson private false \
+            '{namespace:$ns, name:$name, is_private:$private}')
 
           create_status=$(curl -s -o /tmp/dh_create_resp.json -w "%{http_code}" \
             -H "Authorization: JWT $TOKEN" \
