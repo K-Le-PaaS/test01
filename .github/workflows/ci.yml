@@ -13,8 +13,8 @@ jobs:
   buildpack-build:
     runs-on: ubuntu-latest
     env:
-      SERVICE_NAME: test01   # ← 실제 서비스명 (예: backend-hybrid, frontend)
-      BUILD_PATH: .                     # 모노레포면 하위 경로 지정 (예: ./apps/frontend)
+      # 기본값: 현재 리포 이름을 서비스명으로 사용
+      BUILD_PATH: .  # 모노레포면 하위 경로 지정 (예: ./apps/frontend)
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,8 +29,11 @@ jobs:
           username: ${{ secrets.DOCKER_ID }}
           password: ${{ secrets.DOCKER_PASSWD }}
 
-      - name: Set IMAGE_REPO
-        run: echo "IMAGE_REPO=docker.io/${{ secrets.DOCKER_ID }}/${SERVICE_NAME}" >> "$GITHUB_ENV"
+      - name: Set SERVICE_NAME / NAMESPACE / IMAGE_REPO
+        run: |
+          echo "SERVICE_NAME=${GITHUB_REPOSITORY##*/}" >> "$GITHUB_ENV"
+          echo "NAMESPACE=${{ secrets.DOCKER_NAMESPACE || secrets.DOCKER_ID }}" >> "$GITHUB_ENV"
+          echo "IMAGE_REPO=docker.io/${NAMESPACE}/${SERVICE_NAME}" >> "$GITHUB_ENV"
 
       - name: Ensure jq is installed
         run: |
@@ -39,13 +42,14 @@ jobs:
 
       - name: Ensure Docker Hub repository exists
         env:
-          NAMESPACE: ${{ secrets.DOCKER_ID }}
+          NAMESPACE: ${{ env.NAMESPACE }}
           REPO: ${{ env.SERVICE_NAME }}
           DH_USER: ${{ secrets.DOCKER_ID }}
           DH_PASS: ${{ secrets.DOCKERHUB_PAT || secrets.DOCKER_PASSWD }}
         run: |
           set -e
           base="https://hub.docker.com/v2"
+          # 1) 존재 확인
           status=$(curl -s -o /dev/null -w "%{http_code}" -u "$DH_USER:$DH_PASS" \
             "$base/repositories/$NAMESPACE/$REPO/")
           if [ "$status" = "200" ]; then
@@ -53,12 +57,25 @@ jobs:
             exit 0
           fi
           if [ "$status" != "404" ]; then
-            echo "Unexpected status: $status"; exit 1
+            echo "Unexpected status on HEAD: $status"; exit 1
           fi
-          payload=$(jq -n --arg ns "$NAMESPACE" --arg name "$REPO" --argjson private false \
-            '{namespace:$ns, name:$name, is_private:$private}')
-          curl -s -f -u "$DH_USER:$DH_PASS" -H "Content-Type: application/json" \
-            -d "$payload" "$base/repositories/" > /dev/null
+          # 2) 생성: 개인/조직 분기
+          if [ "$NAMESPACE" = "$DH_USER" ]; then
+            # 개인 네임스페이스
+            payload=$(jq -n --arg name "$REPO" --argjson private false '{name:$name, is_private:$private}')
+            create_url="$base/repositories/"
+          else
+            # 조직 네임스페이스
+            payload=$(jq -n --arg name "$REPO" --argjson private false '{name:$name, is_private:$private}')
+            create_url="$base/repositories/$NAMESPACE/"
+          fi
+          create_status=$(curl -s -o /tmp/dh_create_resp.json -w "%{http_code}" -u "$DH_USER:$DH_PASS" \
+            -H "Content-Type: application/json" -d "$payload" "$create_url")
+          if [ "$create_status" != "201" ] && [ "$create_status" != "200" ]; then
+            echo "Create failed: HTTP $create_status"
+            cat /tmp/dh_create_resp.json || true
+            exit 1
+          fi
           echo "Created repository: $NAMESPACE/$REPO"
 
       - name: Compute tag
