@@ -36,7 +36,7 @@ jobs:
           echo "tag=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Build with pack (Paketo builder)
-        uses: buildpacks/github-actions/pack@v5.8.1
+        uses: buildpacks/github-actions/setup-pack@v5.8.1
         with:
           args: >
             build ${{ env.IMAGE_REPO }}:${{ steps.vars.outputs.tag }}
