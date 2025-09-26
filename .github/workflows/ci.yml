@@ -1,4 +1,4 @@
-name: CI
+name: updated CI
 on:
  push:
  branches: ["main"]
