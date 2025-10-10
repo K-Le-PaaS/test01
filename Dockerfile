@@ -18,4 +18,4 @@ EXPOSE 8080
 
 # 플랫폼이 주입하는 PORT 환경변수 사용
 ENV NODE_ENV=production
-CMD ["sh", "-c", "node server.js"]
+CMD ["node", "server.js"]
