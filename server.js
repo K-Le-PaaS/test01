@@ -5,7 +5,7 @@ const PORT = process.env.PORT || 8080;
 const server = http.createServer((_, res) => {
   res.statusCode = 200;
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.end('osssk\n');
+  res.end('ok\n');
 });
 
 server.listen(PORT, () => {
