@@ -11,4 +11,4 @@ def unsafe_eval(code_str):
 def simple_greeting(name):
     print("Hello, " + name + "!")  # 문자열 연결법 개선 가능
 
-# TODO: 함수 주석 보강 필요
+# TODO: 함수 주석 보강 필요함
